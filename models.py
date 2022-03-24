@@ -24,30 +24,56 @@ class DragonNet(nn.Module):
         out_features: number of features in output layer
     """
     
-    def __init__(self, in_features, hidden_channels, out_features):
+    def __init__(self, in_features, hidden_channels, out_features=[200, 100, 1]):
         super(DragonNet, self).__init__()
 
         #initialize placeholder tensors for weight and bias 
-        self.weight = torch.Tensor(in_features,out_features)
-        #self.bias = torch.Tensor(out_features) (why do they do not do this)
+        
 
         #representation layers 3 : block1 
         # units in kera = out_features 
-        self.rep_1 = nn.Linear()
-        self.rep_2 = nn.Linear()
-        self.rep_3 = nn.Linear()
         
-    def init_params(self, std=0.1):
+        self.representation_block = nn.Sequential(
+            nn.Linear(in_features=in_features,out_features = out_features[0]), 
+            nn.ELU(), 
+            nn.Linear(in_features=out_features[0], out_features=out_features[0]),
+            nn.ELU(),
+            nn.Linear(in_features=out_features[0], out_features=out_features[0]), 
+            nn.ELU()
+        )
+
+        # -----------Propensity Head 
+        self.t_predictions = nn.Sequential(nn.Linear(in_features=out_features[0], out_features=out_features[2]), 
+            nn.Sigmoid())
+
+
+        # -----------t0 Head 
+        self.t0_head = nn.Sequential(nn.Linear(in_features= out_features[0],output_features=out_features[1]),
+            nn.ELU(),
+            nn.nn.Linear(in_features= out_features[1],output_features=out_features[1]), 
+            nn.ELU(), 
+            nn.Linear(in_features= out_features[1],output_features=out_features[2])
+            )
+
+
+        # t1 Head 
+        self.t1_head = nn.Sequential(nn.Linear(in_features= out_features[0],output_features=out_features[1]),
+            nn.ELU(),
+            nn.nn.Linear(in_features= out_features[1],output_features=out_features[1]), 
+            nn.ELU(), 
+            nn.Linear(in_features= out_features[1],output_features=out_features[2])
+            )
+  
+                
+    def init_params(self, std=1):
         """
         Initialize layer parameters. Sample weight from Gaussian distribution
         and bias uniform distribution.
         
         Args:
-            std: Standard deviation of Gaussian distribution (default: 0.1)
+            std: Standard deviation of Random normal distribution (default: 1)
         """
-        self.weight = std*torch.randn_like(self.weight)
-        self.bias = torch.rand_like(self.bias)
-
+       
 
     def forward(self, x):
         # First convolutional layer
