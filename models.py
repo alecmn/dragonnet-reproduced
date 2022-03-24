@@ -27,9 +27,7 @@ class DragonNet(nn.Module):
     def __init__(self, in_features, hidden_channels, out_features=[200, 100, 1]):
         super(DragonNet, self).__init__()
 
-        #initialize placeholder tensors for weight and bias 
         
-
         #representation layers 3 : block1 
         # units in kera = out_features 
         
