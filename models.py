@@ -54,7 +54,7 @@ class DragonNet(nn.Module):
             )
 
 
-        # t1 Head 
+        # ----------t1 Head 
         self.t1_head = nn.Sequential(nn.Linear(in_features= out_features[0],output_features=out_features[1]),
             nn.ELU(),
             nn.nn.Linear(in_features= out_features[1],output_features=out_features[1]), 
