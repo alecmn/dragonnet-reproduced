@@ -1,4 +1,5 @@
 #Setup
+from turtle import forward
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,6 +14,28 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+# find out why this is neccessary 
+# not dicussed 
+class EpsilonLayer(nn.Module): 
+    def __init__(self): 
+        super().__init__()
+
+        # building epsilon trainable weight 
+        self.weights = nn.Parameter(torch.Tensor(1,1))
+
+        #initializing weight parameter with RandomNormal
+        nn.init.normal_(self.weights)
+    
+    def forward(self,inputs):
+        return torch.mm(self.weights.T, torch.ones_like(inputs)[:, 0:1])
+
+#weight initialzation function 
+def weights_init(params):
+    if isinstance(params, nn.Linear): 
+        torch.nn.init.normal_(params.weight, mean=0.0, std=1.0)
+        torch.nn.init.zero_(params.bias)
+    
 
 class DragonNet(nn.Module):
     """
@@ -61,7 +84,8 @@ class DragonNet(nn.Module):
             nn.ELU(), 
             nn.Linear(in_features= out_features[1],output_features=out_features[2])
             )
-  
+
+        self.epsilon = EpsilonLayer()
                 
     def init_params(self, std=1):
         """
@@ -71,60 +95,22 @@ class DragonNet(nn.Module):
         Args:
             std: Standard deviation of Random normal distribution (default: 1)
         """
-       
+        self.representation_block.apply(weights_init)
+        
 
-    def forward(self, x):
-        # First convolutional layer
-        x = self.conv1(x)
-        # Activation function
-        x = self.relu1(x)
-        # Max pool
-        x = self.max_pool1(x)
-        # Second convolutional layer
-        x = self.conv2(x)
-        # Activation function
-        x = self.relu2(x)
-        # Max pool
-        x = self.max_pool2(x)
-        # Flatten
-        x = x.view(x.size(0), -1)
-        # Fully connected layer
-        x = self.fc(x)
-        return x
+    def forward(self, input):
+        x = self.representation_block(input)
+        
+        #------propensity scores 
+        propensity_head = self.t_predictions(x)
+        epsilons = self.epsilon(propensity_head)
 
+        #------t0
+        t0_out = self.t0_head(x)
 
-def make_dragonnet(input_dim, reg_l2): 
-    
-    """
-    Args:
-        input_dim (_type_): dimension of input data (X)
-        reg_l2 (_type_): regularization type 
-    """
+        #------t1
+        t1_out = self.t1_head(x)
+        
+        return propensity_head, t0_out, t1_out, epsilons
 
-    #t_l1 = 0         these were not used so we did not keep it 
-    #t_l2 = reg_l2
-
-    # assuming input dimension is an intenger
-    # input dimension is the number of features per sample in X  
-    inputs = torch.Tensor(input_dim)
-
-    
-    
-    #Representation block 
-    # creating representation layer z(X)
-    x = torch.nn.Linear(out_features=200, )
-
-
-    #-----3 headed architecture 
-    # Head 1: Propensity score/ tratement prediction head 
-
-
-    # Head 1 hypothesis  
-    
-    # Head 2 hypothesis 
-     
-
-    # Layer 2 
-    # Layer 3
-     
 
