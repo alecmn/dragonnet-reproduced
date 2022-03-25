@@ -1,5 +1,4 @@
 #Setup
-from turtle import forward
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -75,7 +74,6 @@ class DragonNet(nn.Module):
             nn.ELU(), 
             nn.Linear(in_features= out_features[1],output_features=out_features[2])
             )
-
 
         # ----------t1 Head 
         self.t1_head = nn.Sequential(nn.Linear(in_features= out_features[0],output_features=out_features[1]),
