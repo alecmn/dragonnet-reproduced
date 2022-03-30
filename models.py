@@ -14,7 +14,7 @@ def binary_classification_loss(concat_true, concat_pred):
     t_true = concat_true[:, 1]
     t_pred = concat_pred[:, 2]
     t_pred = (t_pred + 0.001) / 1.002
-    loss = torch.sum(F.binary_cross_entropy(t_true, t_pred))
+    loss = torch.sum(F.binary_cross_entropy_with_logits(t_true, t_pred))
     # print(f"T_true: {t_true}")
     # print(f"T_pred: {t_pred}")
     # print(F.binary_cross_entropy(t_true, t_pred))
@@ -45,7 +45,9 @@ def dead_loss(concat_true, concat_pred):
     return regression_loss(concat_true, concat_pred)
 
 
-def dragonnet_loss_binarycross(concat_true, concat_pred):
+def dragonnet_loss_binarycross(concat_pred, concat_true):
+    # print(regression_loss(concat_true, concat_pred))
+    # print(binary_classification_loss(concat_true, concat_pred))
     return regression_loss(concat_true, concat_pred) + binary_classification_loss(concat_true, concat_pred)
 
 
@@ -128,24 +130,27 @@ class DragonNet(nn.Module):
             std: Standard deviation of Random normal distribution (default: 1)
         """
         self.representation_block.apply(weights_init)
-        self.t_predictions.apply(weights_init)
-        self.t0_head.apply(weights_init)
-        self.t1_head.apply(weights_init)
+        # self.t_predictions.apply(weights_init)
+        # self.t0_head.apply(weights_init)
+        # self.t1_head.apply(weights_init)
 
     def forward(self, x):
         # print(x)
         x = self.representation_block(x)
-        # print(x)
+        # print(f"Repr block: {x}")
 
         # ------propensity scores
         propensity_head = self.t_predictions(x)
         epsilons = self.epsilon(propensity_head)
+        # print(f"Prop head: {propensity_head}")
 
         # ------t0
         t0_out = self.t0_head(x)
+        # print(f"t0 out: {t0_out}")
 
         # ------t1
         t1_out = self.t1_head(x)
+        # print(f"t1_out: {t1_out}")
 
         # print(t0_out, t1_out, propensity_head, epsilons)
         return torch.cat((t0_out, t1_out, propensity_head, epsilons), 1)

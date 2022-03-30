@@ -1,15 +1,16 @@
 # from experiment.models import *
-from models import *
+from experiment.models2 import *
 import os
 import glob
 import argparse
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-# from experiment.idhp_data import *
+from experiment.idhp_data import *
 
 
 def _split_output(yt_hat, t, y, y_scaler, x, index):
+    yt_hat = yt_hat.detach().numpy()
     q_t0 = y_scaler.inverse_transform(yt_hat[:, 0].reshape(-1, 1).copy())
     q_t1 = y_scaler.inverse_transform(yt_hat[:, 1].reshape(-1, 1).copy())
     g = yt_hat[:, 2].copy()
@@ -55,9 +56,19 @@ def train(train_loader, net, optimizer, criterion):
         # forward + backward + optimize
         outputs = net(inputs)
         # print(outputs)
-        loss = criterion(labels, outputs)
-
+        # loss = criterion(labels, outputs)
+        # print(loss)
+        reg = 0
+        reg_lambda = 1
+        for param in net.parameters():
+            reg += 0.5 * (param ** 2).sum()  # you can replace it with abs().sum() to get L1 regularization
+        loss = criterion(outputs, labels) + reg_lambda * reg  # make the regularization part of the loss
+        # print(loss)
         loss.backward()
+        # for name, param in net.named_parameters():
+        #     print(name, torch.isnan(param.grad).any())
+        # print(param.grad)
+        # nn.utils.clip_grad_norm_(net.parameters(), clip_value=5.0)
         optimizer.step()
 
         # keep track of loss and accuracy
@@ -66,7 +77,7 @@ def train(train_loader, net, optimizer, criterion):
         # total += labels.size(0)
         # correct += (predicted == labels).sum().item()
 
-    return avg_loss  # / len(train_loader)#, 100 * correct / total
+    return avg_loss / len(train_loader)  # , 100 * correct / total
 
 
 def test(test_loader, net, criterion):
@@ -105,6 +116,11 @@ def test(test_loader, net, criterion):
             correct += (predicted == labels).sum().item()
 
     return avg_loss / len(test_loader), 100 * correct / total
+
+
+def normalize(x):
+    x_normed = x / x.max(0, keepdim=True)[0]
+    return x_normed
 
 
 def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, output_dir='',
@@ -156,17 +172,29 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
 
     epochs = 100
 
-    optimizer = optim.Adam(dragonnet.parameters(), lr=1e-3)
-
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+    optimizer_Adam = optim.Adam([{'params': dragonnet.representation_block.parameters()},
+                                 {'params': dragonnet.t_predictions.parameters()},
+                                 {'params': dragonnet.t0_head.parameters(), 'weight_decay': 0.01},
+                                 {'params': dragonnet.t1_head.parameters(), 'weight_decay': 0.01}], lr=1e-6)
+    optimizer_SGD = optim.SGD([{'params': dragonnet.representation_block.parameters()},
+                               {'params': dragonnet.t_predictions.parameters()},
+                               {'params': dragonnet.t0_head.parameters(), 'weight_decay': 0.01},
+                               {'params': dragonnet.t1_head.parameters(), 'weight_decay': 0.01}], lr=1e-6, momentum=0.9)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer_Adam, 'min')
 
     for epoch in tqdm(range(epochs)):
         # Train on data
-        train_loss = train(train_loader, dragonnet, optimizer, loss)
+        train_loss = train(train_loader, dragonnet, optimizer_Adam, loss)
         print(f"Epoch: {epoch + 1}, loss: {train_loss}")
+
+        scheduler.step(train_loss)
 
         # # Test on data
         # test_loss, test_acc = test(test_loader, dragonnet, loss)
+    for epoch in tqdm(range(epochs)):
+        # Train on data
+        train_loss = train(train_loader, dragonnet, optimizer_SGD, loss)
+        print(f"Epoch: {epoch + 1}, loss: {train_loss}")
 
     elapsed_time = time.time() - start_time
     print("***************************** elapsed_time is: ", elapsed_time)
