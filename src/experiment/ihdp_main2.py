@@ -10,7 +10,7 @@ from experiment.idhp_data import *
 
 
 def _split_output(yt_hat, t, y, y_scaler, x, index):
-    yt_hat = yt_hat.detach().numpy()
+    yt_hat = yt_hat.detach().cpu().numpy()
     q_t0 = y_scaler.inverse_transform(yt_hat[:, 0].reshape(-1, 1).copy())
     q_t1 = y_scaler.inverse_transform(yt_hat[:, 1].reshape(-1, 1).copy())
     g = yt_hat[:, 2].copy()
@@ -55,20 +55,8 @@ def train(train_loader, net, optimizer, criterion):
 
         # forward + backward + optimize
         outputs = net(inputs)
-        # print(outputs)
-        # loss = criterion(labels, outputs)
-        # print(loss)
-        reg = 0
-        reg_lambda = 1
-        for param in net.parameters():
-            reg += 0.5 * (param ** 2).sum()  # you can replace it with abs().sum() to get L1 regularization
-        loss = criterion(outputs, labels) + reg_lambda * reg  # make the regularization part of the loss
-        # print(loss)
+        loss = criterion(outputs, labels)
         loss.backward()
-        # for name, param in net.named_parameters():
-        #     print(name, torch.isnan(param.grad).any())
-        # print(param.grad)
-        # nn.utils.clip_grad_norm_(net.parameters(), clip_value=5.0)
         optimizer.step()
 
         # keep track of loss and accuracy
@@ -76,46 +64,10 @@ def train(train_loader, net, optimizer, criterion):
         # _, predicted = torch.max(outputs.data, 1)
         # total += labels.size(0)
         # correct += (predicted == labels).sum().item()
+    # print(f"Total loss: {avg_loss}")
+    # print(f"Data length: {len(train_loader)}")
 
     return avg_loss / len(train_loader)  # , 100 * correct / total
-
-
-def test(test_loader, net, criterion):
-    """
-    Evaluates network in batches.
-
-    Args:
-        test_loader: Data loader for test set.
-        net: Neural network model.
-        criterion: Loss function (e.g. cross-entropy loss).
-    """
-
-    avg_loss = 0
-    correct = 0
-    total = 0
-
-    # Use torch.no_grad to skip gradient calculation, not needed for evaluation
-    with torch.no_grad():
-        # iterate through batches
-        for data in test_loader:
-            # get the inputs; data is a list of [inputs, labels]
-            inputs, labels = data
-
-            # forward pass
-            outputs = net(inputs)
-            loss1 = criterion(outputs[0], labels)
-            loss2 = criterion(outputs[1], labels)
-            loss3 = criterion(outputs[2], labels)
-            loss4 = criterion(outputs[3], labels)
-            loss = loss1 + loss2 + loss3 + loss4
-
-            # keep track of loss and accuracy
-            avg_loss += loss
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    return avg_loss / len(test_loader), 100 * correct / total
 
 
 def normalize(x):
@@ -131,13 +83,16 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
     train_outputs = []
     test_outputs = []
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(device)
+
     if dragon == 'tarnet':
         print('I am here making tarnet')
-        net = TarNet(x.shape[1])
+        net = TarNet(x.shape[1]).cuda()
 
     elif dragon == 'dragonnet':
         print("I am here making dragonnet")
-        net = DragonNet(x.shape[1])
+        net = DragonNet(x.shape[1]).cuda()
 
     # metrics = [regression_loss, binary_classification_loss, treatment_accuracy, track_epsilon]
     #
@@ -162,11 +117,13 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
 
     yt_train = np.concatenate([y_train, t_train], 1)
 
-    tensors_train = torch.from_numpy(x_train).float(), torch.from_numpy(yt_train).float()
-    tensors_test = torch.from_numpy(x_test).float(), torch.from_numpy(y_test).float()
+    print(np.shape(x_train))
 
-    train_loader = DataLoader(TensorDataset(*tensors_train), batch_size=100)
-    test_loader = DataLoader(TensorDataset(*tensors_test), batch_size=100)
+    tensors_train = torch.from_numpy(x_train).float().cuda(), torch.from_numpy(yt_train).float().cuda()
+    tensors_test = torch.from_numpy(x_test).float().cuda(), torch.from_numpy(y_test).float().cuda()
+
+    train_loader = DataLoader(TensorDataset(*tensors_train), batch_size=batch_size)
+    test_loader = DataLoader(TensorDataset(*tensors_test), batch_size=batch_size)
 
     import time;
     start_time = time.time()
@@ -182,21 +139,29 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
                                {'params': net.t_predictions.parameters()},
                                {'params': net.t0_head.parameters(), 'weight_decay': 0.01},
                                {'params': net.t1_head.parameters(), 'weight_decay': 0.01}], lr=1e-6, momentum=0.9)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer_Adam, 'min')
+    scheduler_Adam = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer_Adam, mode='min', factor=0.5, patience=5,
+                                                          threshold=1e-8, cooldown=0, min_lr=0)
+    scheduler_SGD = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer_SGD, mode='min', factor=0.5, patience=5,
+                                                         threshold=0, cooldown=0, min_lr=0)
 
-    for epoch in tqdm(range(epochs1)):
+    train_loss = 0
+    for epoch in range(epochs1):
         # Train on data
         train_loss = train(train_loader, net, optimizer_Adam, loss)
-        print(f"Epoch: {epoch + 1}, loss: {train_loss}")
 
-        scheduler.step(train_loss)
+        scheduler_Adam.step(train_loss)
 
         # # Test on data
         # test_loss, test_acc = test(test_loader, dragonnet, loss)
-    for epoch in tqdm(range(epochs2)):
+    print(f"Adam loss: {train_loss}")
+
+    for epoch in range(epochs2):
         # Train on data
         train_loss = train(train_loader, net, optimizer_SGD, loss)
-        print(f"Epoch: {epoch + 1}, loss: {train_loss}")
+
+        scheduler_SGD.step(train_loss)
+
+    print(f"SGD loss: {train_loss}")
 
     elapsed_time = time.time() - start_time
     print("***************************** elapsed_time is: ", elapsed_time)
@@ -204,10 +169,79 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
     # yt_hat_test = dragonnet.predict(x_test)
     # yt_hat_train = dragonnet.predict(x_train)
 
-    yt_hat_test = net(torch.from_numpy(x_test).float())
-    yt_hat_train = net(torch.from_numpy(x_train).float())
+    yt_hat_test = net(torch.from_numpy(x_test).float().cuda())
+    yt_hat_train = net(torch.from_numpy(x_train).float().cuda())
 
     test_outputs += [_split_output(yt_hat_test, t_test, y_test, y_scaler, x_test, test_index)]
     train_outputs += [_split_output(yt_hat_train, t_train, y_train, y_scaler, x_train, train_index)]
 
     return test_outputs, train_outputs
+
+
+def run_ihdp(data_base_dir='/Users/claudiashi/data/ihdp_csv', output_dir='~/result/ihdp/',
+             knob_loss=dragonnet_loss_binarycross,
+             ratio=1., dragon=''):
+    print("the dragon is {}".format(dragon))
+
+    simulation_files = sorted(glob.glob("{}/*.csv".format(data_base_dir)))
+
+    for idx, simulation_file in enumerate(simulation_files):
+
+        simulation_output_dir = os.path.join(output_dir, str(idx))
+
+        os.makedirs(simulation_output_dir, exist_ok=True)
+
+        x = load_and_format_covariates_ihdp(simulation_file)
+        t, y, y_cf, mu_0, mu_1 = load_all_other_crap(simulation_file)
+        np.savez_compressed(os.path.join(simulation_output_dir, "simulation_outputs.npz"),
+                            t=t, y=y, y_cf=y_cf, mu_0=mu_0, mu_1=mu_1)
+
+        for is_targeted_regularization in [True, False]:
+            print("Is targeted regularization: {}".format(is_targeted_regularization))
+            test_outputs, train_output = train_and_predict_dragons(t, y, x,
+                                                                   targeted_regularization=is_targeted_regularization,
+                                                                   output_dir=simulation_output_dir,
+                                                                   knob_loss=knob_loss, ratio=ratio, dragon=dragon,
+                                                                   val_split=0.2, batch_size=64)
+
+            if is_targeted_regularization:
+                train_output_dir = os.path.join(simulation_output_dir, "targeted_regularization")
+            else:
+                train_output_dir = os.path.join(simulation_output_dir, "baseline")
+            os.makedirs(train_output_dir, exist_ok=True)
+
+            # save the outputs of for each split (1 per npz file)
+            for num, output in enumerate(test_outputs):
+                np.savez_compressed(os.path.join(train_output_dir, "{}_replication_test.npz".format(num)),
+                                    **output)
+
+            for num, output in enumerate(train_output):
+                np.savez_compressed(os.path.join(train_output_dir, "{}_replication_train.npz".format(num)),
+                                    **output)
+
+
+def turn_knob(data_base_dir='/Users/claudiashi/data/test/', knob='dragonnet',
+              output_base_dir=''):
+    output_dir = os.path.join(output_base_dir, knob)
+
+    if knob == 'dragonnet':
+        run_ihdp(data_base_dir=data_base_dir, output_dir=output_dir, dragon='dragonnet')
+
+    if knob == 'tarnet':
+        run_ihdp(data_base_dir=data_base_dir, output_dir=output_dir, dragon='tarnet')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_base_dir', type=str, help="path to directory LBIDD")
+    parser.add_argument('--knob', type=str, default='early_stopping',
+                        help="dragonnet or tarnett")
+
+    parser.add_argument('--output_base_dir', type=str, help="directory to save the output")
+
+    args = parser.parse_args()
+    turn_knob(args.data_base_dir, args.knob, args.output_base_dir)
+
+
+if __name__ == '__main__':
+    main()

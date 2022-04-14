@@ -3,6 +3,7 @@ Helpers to load (and pre-process?) the ACIC 2018 data
 dataset description: https://www.researchgate.net/publication/11523952_Infant_Mortality_Statistics_from_the_1999_Period_Linked_BirthInfant_Death_Data_Set
 """
 import os
+import shutil
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
@@ -30,10 +31,20 @@ def load_ufids(file_path='/Users/claudiashi/data/small_sweep/params.csv'):
     df = pd.read_csv(file_path, header=0, sep=',')
     df = df[df['size'] > 4999]
     df = df[df['size'] < 10001]
-    df_1 = df[df['instance'] == 1]
-    df_2 = df[df['instance'] == 2]
-    ufids = np.concatenate([df_1['ufid'].values, df_2['ufid'].values])
+    dfs = []
+    for i in range(1, 64):
+        dfs.append(df[df['dgp'] == i].sample(n=1))
+    df = pd.concat(dfs, sort=False)
+    ufids = df['ufid'].values
     return ufids
+
+
+def make_subdirs(ufids, path):
+    p = os.path.join(path, 'a')
+    os.makedirs(p, exist_ok=True)
+    for ufid in ufids:
+        file = os.path.join(path, 'scaling/factuals/', ufid + '.csv')
+        shutil.copy(file, p)
 
 
 def load_params(file_path='/Users/claudiashi/data/small_sweep/params.csv'):
@@ -44,8 +55,11 @@ def load_params(file_path='/Users/claudiashi/data/small_sweep/params.csv'):
 
 
 def main():
-    data_path = '../data/LIBDD'
+    data_path = '../../dat/LIBDD/'
     simulation_id = '43b75dcfc0fc49beb95a111098ae11b1'
+
+    ufids = load_ufids(os.path.join(data_path, 'scaling/params.csv'))
+    make_subdirs(ufids, data_path)
 
     covariate_path = os.path.join(data_path, 'x.csv')
     all_covariates = load_and_format_covariates(covariate_path)
@@ -54,5 +68,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
+    main()
     pass

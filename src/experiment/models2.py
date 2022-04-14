@@ -55,13 +55,13 @@ def dragonnet_loss_binarycross(concat_pred, concat_true):
 # not dicussed
 class EpsilonLayer(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(EpsilonLayer, self).__init__()
 
         # building epsilon trainable weight
         self.weights = nn.Parameter(torch.Tensor(1, 1))
 
         # initializing weight parameter with RandomNormal
-        nn.init.normal_(self.weights)
+        nn.init.normal_(self.weights, mean=0, std=0.05)
 
     def forward(self, inputs):
         return torch.mm(torch.ones_like(inputs)[:, 0:1], self.weights.T)
@@ -79,6 +79,7 @@ def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
         t_pred = concat_pred[:, 2]
 
         epsilons = concat_pred[:, 3]
+        print(f"Epsilon: {epsilons}")
         t_pred = (t_pred + 0.01) / 1.02
         # t_pred = tf.clip_by_value(t_pred,0.01, 0.99,name='t_pred')
 
@@ -91,15 +92,26 @@ def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
 
         # final
         loss = vanilla_loss + ratio * targeted_regularization
+        print(f"Vanilla Loss: {vanilla_loss}")
+        print(f"Tarreg: {targeted_regularization}")
+        print(f"Tarreg loss: {loss}")
         return loss
 
     return tarreg_ATE_unbounded_domain_loss
 
 
 # weight initialzation function
-def weights_init(params):
+def weights_init_normal(params):
     if isinstance(params, nn.Linear):
         torch.nn.init.normal_(params.weight, mean=0.0, std=1.0)
+        torch.nn.init.zeros_(params.bias)
+
+
+# weight initialzation function
+def weights_init_uniform(params):
+    if isinstance(params, nn.Linear):
+        limit = math.sqrt(6 / (params.weight[1] + params.weight[0]))
+        torch.nn.init.uniform_(params.weight, a=-limit, b=limit)
         torch.nn.init.zeros_(params.bias)
 
 
@@ -158,10 +170,10 @@ class DragonNet(nn.Module):
         Args:
             std: Standard deviation of Random normal distribution (default: 1)
         """
-        self.representation_block.apply(weights_init)
-        # self.t_predictions.apply(weights_init)
-        # self.t0_head.apply(weights_init)
-        # self.t1_head.apply(weights_init)
+        self.representation_block.apply(weights_init_normal)
+        self.t_predictions.apply(weights_init_uniform)
+        self.t0_head.apply(weights_init_uniform)
+        self.t1_head.apply(weights_init_uniform)
 
     def forward(self, x):
         # print(x)
@@ -211,7 +223,7 @@ class TarNet(nn.Module):
         )
 
         # -----------Propensity Head
-        self.t_predictions = nn.Sequential(nn.Linear(in_features=out_features[0], out_features=out_features[2]),
+        self.t_predictions = nn.Sequential(nn.Linear(in_features=in_features, out_features=out_features[2]),
                                            nn.Sigmoid())
 
         # -----------t0 Head
@@ -240,10 +252,10 @@ class TarNet(nn.Module):
         Args:
             std: Standard deviation of Random normal distribution (default: 1)
         """
-        self.representation_block.apply(weights_init)
-        # self.t_predictions.apply(weights_init)
-        # self.t0_head.apply(weights_init)
-        # self.t1_head.apply(weights_init)
+        self.representation_block.apply(weights_init_normal)
+        self.t_predictions.apply(weights_init_uniform)
+        self.t0_head.apply(weights_init_uniform)
+        self.t1_head.apply(weights_init_uniform)
 
     def forward(self, x):
         # print(x)
