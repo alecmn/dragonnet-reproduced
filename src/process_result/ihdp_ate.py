@@ -66,10 +66,6 @@ def make_table(train_test='train', n_replication=50):
                 simple_errors.append(err)
                 tmle_errors.append(tmle_err)
 
-            if knob == 'dragonnet' and model == 'baseline':
-                tmle_errors = [x for x in tmle_errors if x < 0.6]
-            print(f"ufid simple: {simple_errors}")
-            print(f"ufid tmle: {tmle_errors}")
             dict[knob][model] = np.mean(simple_errors)
             tmle_dict[knob][model] = np.mean(tmle_errors)
 
