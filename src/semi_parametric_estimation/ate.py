@@ -38,6 +38,8 @@ def psi_tmle_bin_outcome(q_t0, q_t1, g, t, y, truncate_level=0.05):
 
 
 def psi_tmle_cont_outcome(q_t0, q_t1, g, t, y, eps_hat=None, truncate_level=0.05):
+    # print(f"y1: {y}")
+    # print(f"g: {g}")
     q_t0, q_t1, g, t, y = truncate_all_by_g(q_t0, q_t1, g, t, y, truncate_level)
 
 
@@ -46,6 +48,9 @@ def psi_tmle_cont_outcome(q_t0, q_t1, g, t, y, eps_hat=None, truncate_level=0.05
     full_q = (1.0-t)*q_t0 + t*q_t1 # predictions from unperturbed model
 
     if eps_hat is None:
+        # print(f"h: {h}")
+        # print(f"y: {y}")
+        # print(f"full q: {full_q}")
         eps_hat = np.sum(h*(y-full_q)) / np.sum(np.square(h))
 
     def q1(t_cf):

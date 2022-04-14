@@ -46,8 +46,6 @@ def dead_loss(concat_true, concat_pred):
 
 
 def dragonnet_loss_binarycross(concat_pred, concat_true):
-    # print(regression_loss(concat_true, concat_pred))
-    # print(binary_classification_loss(concat_true, concat_pred))
     return regression_loss(concat_true, concat_pred) + binary_classification_loss(concat_true, concat_pred)
 
 
@@ -68,6 +66,13 @@ class EpsilonLayer(nn.Module):
 
 
 def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
+    """
+    Create the targeted regularization loss criterion
+    Args:
+        ratio: Ratio of targeted regularization to use
+        dragonnet_loss: Simple loss
+
+    """
     def tarreg_ATE_unbounded_domain_loss(concat_pred, concat_true):
         vanilla_loss = dragonnet_loss(concat_pred, concat_true)
 
@@ -100,14 +105,14 @@ def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
     return tarreg_ATE_unbounded_domain_loss
 
 
-# weight initialzation function
+# weight initialization function
 def weights_init_normal(params):
     if isinstance(params, nn.Linear):
         torch.nn.init.normal_(params.weight, mean=0.0, std=1.0)
         torch.nn.init.zeros_(params.bias)
 
 
-# weight initialzation function
+# weight initialization function
 def weights_init_uniform(params):
     if isinstance(params, nn.Linear):
         limit = math.sqrt(6 / (params.weight[1] + params.weight[0]))
@@ -117,12 +122,7 @@ def weights_init_uniform(params):
 
 class DragonNet(nn.Module):
     """
-    3-headed dragonet architecture
-
-    Args:
-        in_channels: number of features of the input image ("depth of image")
-        hidden_channels: number of hidden features ("depth of convolved images")
-        out_features: number of features in output layer
+    3-headed dragonnet architecture
     """
 
     def __init__(self, in_features, out_features=[200, 100, 1]):
@@ -200,11 +200,6 @@ class DragonNet(nn.Module):
 class TarNet(nn.Module):
     """
     3-headed tarnet architecture
-
-    Args:
-        in_channels: number of features of the input image ("depth of image")
-        hidden_channels: number of hidden features ("depth of convolved images")
-        out_features: number of features in output layer
     """
 
     def __init__(self, in_features, out_features=[200, 100, 1]):
@@ -258,22 +253,16 @@ class TarNet(nn.Module):
         self.t1_head.apply(weights_init_uniform)
 
     def forward(self, x):
-        # print(x)
         rep_block = self.representation_block(x)
-        # print(f"Repr block: {x}")
 
         # ------propensity scores
         propensity_head = self.t_predictions(x)
         epsilons = self.epsilon(propensity_head)
-        # print(f"Prop head: {propensity_head}")
 
         # ------t0
         t0_out = self.t0_head(rep_block)
-        # print(f"t0 out: {t0_out}")
 
         # ------t1
         t1_out = self.t1_head(rep_block)
-        # print(f"t1_out: {t1_out}")
 
-        # print(t0_out, t1_out, propensity_head, epsilons)
         return torch.cat((t0_out, t1_out, propensity_head, epsilons), 1)

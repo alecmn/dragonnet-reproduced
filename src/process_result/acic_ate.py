@@ -7,7 +7,7 @@ import glob
 import os
 
 
-def load_truth(file_path='~/data/small_sweep/params.csv',
+def load_truth(file_path='../../dat/LIBDD/scaling/params.csv',
                ufid='00ea30e866f141d9880d5824a361a76a'):
     """
     loading ground truth data
@@ -48,12 +48,13 @@ def get_estimate(q_t0, q_t1, g, t, y_dragon, truncate_level=0.01):
     return psi_n, psi_tmle, initial_loss, final_loss, g_loss
 
 
-def make_table(file_path='../../../dragonnet/result/acic'):
+def make_table(file_path='../../result/acic'):
     dict = {'tarnet': {'baseline': {'back_door': 0, }, 'targeted_regularization': 0},
             'dragonnet': {'baseline': 0, 'targeted_regularization': 0},
             'nednet': {'baseline': 0, 'targeted_regularization': 0}}
 
     tmle_dict = copy.deepcopy(dict)
+    avg_dict = copy.deepcopy(dict)
 
     for knob in ['tarnet', 'dragonnet']:
 
@@ -63,12 +64,29 @@ def make_table(file_path='../../../dragonnet/result/acic'):
         for model in ['baseline', 'targeted_regularization']:
             ufid_simple = pd.Series(np.zeros(len(ufids)))
             ufid_tmle = pd.Series(np.zeros(len(ufids)))
+
+            to_be_removed = []
+            for i in range(len(ufids)):
+                ufid = os.path.basename(ufids[i])
+                usable = False
+                for rep in range(5):
+                    q_t0, q_t1, g, t, y, x = load_data(ufid=ufid, model=model, train_test='train', replication=rep,
+                                                       file_path=sim_dir)
+                    q_t0, q_t1, g, t, y = truncate_all_by_g(q_t0, q_t1, g, t, y, 0.05)
+                    if y.size == 0:
+                        usable = False
+                    else:
+                        usable = True
+                        break
+                if not usable:
+                    to_be_removed.append(ufids[i])
+            ufids = [ufid for ufid in ufids if ufid not in to_be_removed]
             for j in range(len(ufids)):
                 ufid = os.path.basename(ufids[j])
                 print(ufid)
                 truth = load_truth(ufid=ufid)
                 all_psi_n, all_psi_tmle = [], []
-                for rep in range(25):
+                for rep in range(5):
                     q_t0, q_t1, g, t, y, x = load_data(ufid=ufid, model=model, train_test='train', replication=rep,
                                                        file_path=sim_dir)
                     psi_n, psi_tmle, initial_loss, final_loss, g_loss = get_estimate(q_t0, q_t1, g, t, y,
@@ -84,6 +102,28 @@ def make_table(file_path='../../../dragonnet/result/acic'):
 
             dict[knob][model] = ufid_simple.mean()
             tmle_dict[knob][model] = ufid_tmle.mean()
+            avg_dict[knob][model] = ufid_tmle.to_numpy()
+
+    base = avg_dict['tarnet']['baseline']
+    base_treg = avg_dict['tarnet']['targeted_regularization']
+    dragon = avg_dict['dragonnet']['baseline']
+    dragon_treg = avg_dict['dragonnet']['targeted_regularization']
+
+
+    bt = 0
+    d = 0
+    dt = 0
+    for i in range(39):
+        if base_treg[i] > base[i]:
+            bt += 1
+        if dragon[i] > base[i]:
+            d += 1
+        if dragon_treg[i] > base[i]:
+            dt += 1
+
+    print(f"bt: {bt/39}")
+    print(f"d: {d / 39}")
+    print(f"dt: {dt / 39}")
 
     return dict, tmle_dict
 
