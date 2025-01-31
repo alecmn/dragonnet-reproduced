@@ -59,7 +59,7 @@ Same as above except you run the from `src` code as `acic_ate.py`
 
 # Contact us
 This repository is created by Alec Nonnemaker, Sara Boby and Fernando Corte Vargas.
-Feel free to email us if you have any questions: alec.michael@live.nl
+Feel free to email us if you have any questions: alec.michael.n@gmail.com
 
 
 
